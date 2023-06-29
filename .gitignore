@@ -19,3 +19,4 @@ missing
 **/.deps/
 src/ncmpcpp
 stamp-h1
+.ccls-cache/
