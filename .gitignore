@@ -20,3 +20,10 @@ missing
 src/ncmpcpp
 stamp-h1
 .ccls-cache/
+.ccls
+compile_flags.txt
+.clang-format
+.cache
+build
+build.log
+compile_commands.json

@@ -36,6 +36,7 @@
 #include <string>
 #include <tuple>
 #include <queue>
+#include <cstring>
 
 #if NCURSES_MOUSE_VERSION == 1
 # define BUTTON5_PRESSED (1U << 27)
