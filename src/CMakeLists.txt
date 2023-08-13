@@ -126,5 +126,6 @@ set(HEADERS
 )
 
 add_executable(ncmpcpp ${HEADERS} ${SOURCES})
+target_include_directories(ncmpcpp PUBLIC .)
 target_link_libraries(ncmpcpp ${Boost_LIBRARIES} ${CURL_LIBRARIES} ${CURSES_LIBRARIES})
 
