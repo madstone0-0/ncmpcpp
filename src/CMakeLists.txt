@@ -125,7 +125,15 @@ set(HEADERS
 	title.h
 )
 
-add_executable(ncmpcpp ${HEADERS} ${SOURCES})
+add_executable(ncmpcpp ${HEADERS} ${SOURCES} ${CMAKE_SOURCE_DIR}/doc/ncmpcpp.1 ${CMAKE_SOURCE_DIR}/doc/config ${CMAKE_SOURCE_DIR}/doc/bindings)
 target_include_directories(ncmpcpp PUBLIC .)
 target_link_libraries(ncmpcpp ${Boost_LIBRARIES} ${CURL_LIBRARIES} ${CURSES_LIBRARIES})
 
+# add_executable(ncmpcpp.1 ${PROJECT_SOURCE_DIR}/../doc/ncmpcpp.1)
+# add_executable(config ${PROJECT_SOURCE_DIR}/../doc/config)
+# add_executable(bindings ${PROJECT_SOURCE_DIR}/../doc/bindings)
+
+include(GNUInstallDirs)
+install(TARGETS ncmpcpp DESTINATION ${CMAKE_INSTALL_PREFIX}/bin COMPONENT binaries)
+install(FILES ${CMAKE_SOURCE_DIR}/doc/config DESTINATION /etc/ncmpcpp COMPONENT config)
+install(FILES ${CMAKE_SOURCE_DIR}/doc/bindings DESTINATION /etc/ncmpcpp COMPONENT config)
