@@ -26,6 +26,7 @@
 #include <boost/thread/future.hpp>
 #include <memory>
 #include <queue>
+#include <regex>
 
 #include "interfaces.h"
 #include "lyrics_fetcher.h"
@@ -33,77 +34,74 @@
 #include "song.h"
 #include "utility/shared_resource.h"
 
-struct Lyrics: Screen<NC::Scrollpad>, Tabbable
-{
-	Lyrics();
-	
-	// Screen<NC::Scrollpad> implementation
-	virtual void resize() override;
-	virtual void switchTo() override;
-	
-	virtual std::wstring title() override;
-	virtual ScreenType type() override { return ScreenType::Lyrics; }
-	
-	virtual void update() override;
-	
-	virtual bool isLockable() override { return true; }
-	virtual bool isMergable() override { return true; }
+struct Lyrics : Screen<NC::Scrollpad>, Tabbable {
+    Lyrics();
 
-	// other members
-	void fetch(const MPD::Song &s);
-	void refetchCurrent();
-	void edit();
-	void toggleFetcher();
+    // Screen<NC::Scrollpad> implementation
+    virtual void resize() override;
+    virtual void switchTo() override;
 
-	void fetchInBackground(const MPD::Song &s, bool notify_);
-	boost::optional<std::string> tryTakeConsumerMessage();
+    virtual std::wstring title() override;
+    virtual ScreenType type() override { return ScreenType::Lyrics; }
 
-private:
-	struct ConsumerState
-	{
-		struct Song
-		{
-			Song()
-				: m_notify(false)
-			{ }
+    virtual void update() override;
 
-			Song(const MPD::Song &s, bool notify_)
-				: m_song(s), m_notify(notify_)
-			{ }
+    virtual bool isLockable() override { return true; }
+    virtual bool isMergable() override { return true; }
 
-			const MPD::Song &song() const { return m_song; }
-			bool notify() const { return m_notify; }
+    // other members
+    void fetch(const MPD::Song &s);
+    void refetchCurrent();
+    void edit();
+    void toggleFetcher();
+    void setSyncedLyrics(const std::string &lyrics);
+    void clearSyncedLyrics();
 
-		private:
-			MPD::Song m_song;
-			bool m_notify;
-		};
+    void fetchInBackground(const MPD::Song &s, bool notify_);
+    boost::optional<std::string> tryTakeConsumerMessage();
 
-		ConsumerState()
-			: running(false)
-		{ }
+   private:
+    struct ConsumerState {
+        struct Song {
+            Song() : m_notify(false) {}
 
-		bool running;
-		std::queue<Song> songs;
-		boost::optional<std::string> message;
-	};
+            Song(const MPD::Song &s, bool notify_) : m_song(s), m_notify(notify_) {}
 
-	void clearWorker();
-	void stopDownload();
+            const MPD::Song &song() const { return m_song; }
+            bool notify() const { return m_notify; }
 
-	bool m_refresh_window;
-	size_t m_scroll_begin;
+           private:
+            MPD::Song m_song;
+            bool m_notify;
+        };
 
-	std::shared_ptr<Shared<NC::Buffer>> m_shared_buffer;
-	std::shared_ptr<std::atomic<bool>> m_download_stopper;
+        ConsumerState() : running(false) {}
 
-	MPD::Song m_song;
-	LyricsFetcher *m_fetcher;
-	boost::BOOST_THREAD_FUTURE<boost::optional<std::string>> m_worker;
+        bool running;
+        std::queue<Song> songs;
+        boost::optional<std::string> message;
+    };
 
-	Shared<ConsumerState> m_consumer_state;
+    void clearWorker();
+    void stopDownload();
+
+    bool m_refresh_window;
+    size_t m_scroll_begin;
+    bool m_synced;
+
+    std::multimap<long, std::string> m_synced_lyrics;
+    const std::regex m_timestamp_regex{R"(\[(\d{2}):(\d{2})\.(\d{2})\])"};  // [mm:ss.ms]
+
+    std::shared_ptr<Shared<NC::Buffer>> m_shared_buffer;
+    std::shared_ptr<std::atomic<bool>> m_download_stopper;
+
+    MPD::Song m_song;
+    LyricsFetcher *m_fetcher;
+    boost::BOOST_THREAD_FUTURE<boost::optional<std::string>> m_worker;
+
+    Shared<ConsumerState> m_consumer_state;
 };
 
 extern Lyrics *myLyrics;
 
-#endif // NCMPCPP_LYRICS_H
+#endif  // NCMPCPP_LYRICS_H
