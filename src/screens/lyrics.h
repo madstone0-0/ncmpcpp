@@ -89,8 +89,8 @@ struct Lyrics : Screen<NC::Scrollpad>, Tabbable {
     size_t m_scroll_begin;
     bool m_synced;
 
-    std::multimap<long, std::string> m_synced_lyrics;
-    const std::regex m_timestamp_regex{R"(\[(\d{2}):(\d{2})\.(\d{2})\])"};  // [mm:ss.ms]
+    std::multimap<unsigned, std::string> m_synced_lyrics;
+    const std::regex m_timestamp_regex{R"(\[(\d{1,2}):(\d{1,2})\.(\d{1,3})\])"};  // [mm:ss.ms]
 
     std::shared_ptr<Shared<NC::Buffer>> m_shared_buffer;
     std::shared_ptr<std::atomic<bool>> m_download_stopper;

@@ -29,6 +29,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <ranges>
 #include <regex>
 #include <thread>
 #include <utility>
@@ -123,29 +124,51 @@ namespace {
             return ss.str();
     }
 
-    void loadSyncedLyrics(NC::Scrollpad &w, const std::multimap<long, std::string> &lyrics, MPD::Status st) {
-        std::vector<std::string> shownLyrics;
-        const std::pair<NC::Format, NC::Format> lyricEmphasis{NC::Format::Italic, NC::Format::NoItalic};
-        auto elapsed = st.elapsedTime();
-        if (lyrics.count(0) > 3) {
-            for (auto &[timestamp, lyric] : lyrics) shownLyrics.push_back(lyric);
-        } else {
-            for (auto &[timestamp, lyric] : lyrics) {
-                if (timestamp <= elapsed) {
-                    if (shownLyrics.size() == w.getHeight() - 1) {
-                        shownLyrics.erase(shownLyrics.begin());
-                        shownLyrics.push_back(lyric);
-                    } else
-                        shownLyrics.push_back(lyric);
-                }
-            }
+    std::multimap<unsigned, std::string> findLessOrEqualXPlusY(const std::multimap<unsigned, std::string> &con,
+                                                               const unsigned &key, size_t x, size_t y) {
+        std::multimap<unsigned, std::string> result{};
+        auto it = con.lower_bound(key);
+        if (it != con.end()) result.emplace((*it).first, (*it).second);
+        for (size_t i = 0; i < y; ++i) {
+            const auto &[k, v] = *(++it);
+            if (it == con.end()) break;
+            result.emplace(k, v);
         }
 
-        for (const auto &lyric : shownLyrics) {
-            if (lyric == shownLyrics.back()) {
-                w << lyricEmphasis.first;
+        it = con.lower_bound(key);
+        while (it != con.begin()) {
+            const auto &[k, v] = *(--it);
+            result.emplace(k, v);
+        }
+        while (result.size() > x) result.erase(result.begin());
+        return result;
+    }
+
+    template <typename T>
+    T findClosest(const std::vector<T> con, const T &value) {
+        const auto it = std::upper_bound(con.begin(), con.end(), value);
+        if (it == con.end()) return *(con.begin());
+        return *it;
+    }
+
+    void loadSyncedLyrics(NC::Scrollpad &w, const std::multimap<unsigned, std::string> &lyrics, MPD::Status st) {
+        // std::vector<std::string> shownLyrics;
+        std::multimap<unsigned, std::string> shownLyrics;
+        const std::pair<NC::Format, NC::Format> lyricEmphasis{NC::Format::Italic, NC::Format::NoItalic};
+        auto elapsed = st.elapsedTimeMS();
+        if (lyrics.count(0) > 3) {
+            for (auto &[timestamp, lyric] : lyrics) shownLyrics.emplace(timestamp, lyric);
+        } else {
+            shownLyrics = findLessOrEqualXPlusY(lyrics, elapsed, w.getHeight(), w.getHeight() - 5);
+        }
+
+        auto kv = std::views::keys(lyrics);
+        std::vector<unsigned> keys{kv.begin(), kv.end()};
+        for (const auto &[timestamp, lyric] : shownLyrics) {
+            if (auto closestTimestamp = findClosest(keys, elapsed - 2300); closestTimestamp == timestamp) {
+                w << NC::Color::Blue << lyricEmphasis.first;
                 w << Charset::utf8ToLocale(lyric) << '\n';
-                w << lyricEmphasis.second;
+                w << lyricEmphasis.second << NC::Color::End;
             } else {
                 w << Charset::utf8ToLocale(lyric) << '\n';
             }
@@ -272,9 +295,9 @@ void Lyrics::setSyncedLyrics(const std::string &lyrics) {
         const auto matched = std::regex_search(line, timestampMatch, m_timestamp_regex);
         if (!matched) continue;
 
-        // Caclulate timestamp in seconds.
-        long timestamp = std::stol(timestampMatch[1].str()) * 60 + std::stol(timestampMatch[2].str()) +
-                         std::stol(timestampMatch[3].str()) / 1000;
+        // Caclulate timestamp in milliseconds.
+        unsigned timestamp = std::stol(timestampMatch[1].str()) * 60 * 1000 +
+                             std::stol(timestampMatch[2].str()) * 1000 + std::stol(timestampMatch[3].str());
         m_synced_lyrics.emplace(timestamp, line.substr(timestampMatch.length()));
     }
     if (!m_synced_lyrics.empty()) m_synced = true;

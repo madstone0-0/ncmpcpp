@@ -119,6 +119,7 @@ struct Status
 	int nextSongPosition() const { return mpd_status_get_next_song_pos(m_status.get()); }
 	int nextSongID() const { return mpd_status_get_next_song_id(m_status.get()); }
 	unsigned elapsedTime() const { return mpd_status_get_elapsed_time(m_status.get()); }
+	unsigned elapsedTimeMS() const { return mpd_status_get_elapsed_ms(m_status.get()); }
 	unsigned totalTime() const { return mpd_status_get_total_time(m_status.get()); }
 	unsigned kbps() const { return mpd_status_get_kbit_rate(m_status.get()); }
 	unsigned updateID() const { return mpd_status_get_update_id(m_status.get()); }
