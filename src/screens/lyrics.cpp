@@ -21,6 +21,7 @@
 #include "screens/lyrics.h"
 
 #include <boost/algorithm/string/classification.hpp>
+#include <boost/algorithm/string/split.hpp>
 #include <boost/filesystem/operations.hpp>
 #include <boost/range/algorithm_ext/erase.hpp>
 #include <cassert>
@@ -28,15 +29,20 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <ranges>
+#include <regex>
 #include <thread>
+#include <utility>
 
 #include "charset.h"
 #include "curl_handle.h"
 #include "curses/scrollpad.h"
+#include "curses/window.h"
 #include "format_impl.h"
 #include "global.h"
 #include "helpers.h"
 #include "macro_utilities.h"
+#include "mpdpp.h"
 #include "screens/browser.h"
 #include "screens/playlist.h"
 #include "screens/screen_switcher.h"
@@ -98,6 +104,75 @@ namespace {
             return true;
         } else
             return false;
+    }
+
+    std::string loadLyrics(const std::string &filename) {
+        std::stringstream ss;
+        std::ifstream input(filename);
+        if (input.is_open()) {
+            std::string line;
+            bool first_line = true;
+            while (std::getline(input, line)) {
+                // Remove carriage returns as they mess up the display.
+                boost::remove_erase(line, '\r');
+                if (!first_line) ss << '\n';
+                ss << line;
+                first_line = false;
+            }
+            return ss.str();
+        } else
+            return ss.str();
+    }
+
+    std::multimap<unsigned, std::string> findLessOrEqualXPlusY(const std::multimap<unsigned, std::string> &con,
+                                                               const unsigned &key, size_t x, size_t y) {
+        std::multimap<unsigned, std::string> result{};
+        auto it = con.lower_bound(key);
+        if (it != con.end()) result.emplace((*it).first, (*it).second);
+        for (size_t i = 0; i < y; ++i) {
+            const auto &[k, v] = *(++it);
+            if (it == con.end()) break;
+            result.emplace(k, v);
+        }
+
+        it = con.lower_bound(key);
+        while (it != con.begin()) {
+            const auto &[k, v] = *(--it);
+            result.emplace(k, v);
+        }
+        while (result.size() > x) result.erase(result.begin());
+        return result;
+    }
+
+    template <typename T>
+    T findClosest(const std::vector<T> con, const T &value) {
+        const auto it = std::upper_bound(con.begin(), con.end(), value);
+        if (it == con.end()) return *(con.begin());
+        return *it;
+    }
+
+    void loadSyncedLyrics(NC::Scrollpad &w, const std::multimap<unsigned, std::string> &lyrics, MPD::Status st) {
+        // std::vector<std::string> shownLyrics;
+        std::multimap<unsigned, std::string> shownLyrics;
+        const std::pair<NC::Format, NC::Format> lyricEmphasis{NC::Format::Italic, NC::Format::NoItalic};
+        auto elapsed = st.elapsedTimeMS();
+        if (lyrics.count(0) > 3) {
+            for (auto &[timestamp, lyric] : lyrics) shownLyrics.emplace(timestamp, lyric);
+        } else {
+            shownLyrics = findLessOrEqualXPlusY(lyrics, elapsed, w.getHeight(), w.getHeight() - 1);
+        }
+
+        auto kv = std::views::keys(lyrics);
+        std::vector<unsigned> keys{kv.begin(), kv.end()};
+        for (const auto &[timestamp, lyric] : shownLyrics) {
+            if (auto closestTimestamp = findClosest(keys, elapsed - 2300); closestTimestamp == timestamp) {
+                w << NC::Color::Blue << lyricEmphasis.first;
+                w << Charset::utf8ToLocale(lyric) << '\n';
+                w << lyricEmphasis.second << NC::Color::End;
+            } else {
+                w << Charset::utf8ToLocale(lyric) << '\n';
+            }
+        }
     }
 
     bool saveLyrics(const std::string &filename, const std::string &lyrics) {
@@ -176,7 +251,13 @@ void Lyrics::resize() {
 }
 
 void Lyrics::update() {
-    if (m_worker.valid()) {
+    auto st = Mpd.getStatus();
+    if (m_synced) {
+        w.clear();
+        loadSyncedLyrics(w, m_synced_lyrics, st);
+        clearWorker();
+        m_refresh_window = true;
+    } else if (m_worker.valid()) {
         auto buffer = m_shared_buffer->acquire();
         if (!buffer->empty()) {
             w << *buffer;
@@ -206,6 +287,27 @@ void Lyrics::update() {
     }
 }
 
+void Lyrics::setSyncedLyrics(const std::string &lyrics) {
+    std::vector<std::string> tokens;
+    std::smatch timestampMatch;
+    boost::split(tokens, lyrics, boost::is_any_of("\n"));
+    for (const auto &line : tokens) {
+        const auto matched = std::regex_search(line, timestampMatch, m_timestamp_regex);
+        if (!matched) continue;
+
+        // Caclulate timestamp in milliseconds.
+        unsigned timestamp = std::stol(timestampMatch[1].str()) * 60 * 1000 +
+                             std::stol(timestampMatch[2].str()) * 1000 + std::stol(timestampMatch[3].str());
+        m_synced_lyrics.emplace(timestamp, line.substr(timestampMatch.length()));
+    }
+    if (!m_synced_lyrics.empty()) m_synced = true;
+}
+
+void Lyrics::clearSyncedLyrics() {
+    m_synced_lyrics.clear();
+    m_synced = false;
+}
+
 void Lyrics::switchTo() {
     using Global::myScreen;
     if (myScreen != this) {
@@ -233,7 +335,13 @@ void Lyrics::fetch(const MPD::Song &s) {
         w.clear();
         w.reset();
         m_song = s;
-        if (loadLyrics(w, lyricsFilename(m_song))) {
+
+        clearSyncedLyrics();
+        setSyncedLyrics(loadLyrics(lyricsFilename(m_song)));
+        if (m_synced) {
+            Statusbar::print("Using synced lyrics");
+            return;
+        } else if (loadLyrics(w, lyricsFilename(m_song))) {
             clearWorker();
             m_refresh_window = true;
         } else {
