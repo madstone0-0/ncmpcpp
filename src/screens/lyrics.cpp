@@ -67,7 +67,7 @@ namespace {
 
     std::string lyricsFilename(const MPD::Song &s) {
         std::string filename;
-        if (!s.isStream()) {
+        if (Config.store_lyrics_in_song_dir && !s.isStream()) {
             if (s.isFromDatabase()) filename = Config.mpd_music_dir + "/";
             filename += removeExtension(s.getURI());
             removeExtension(filename);
